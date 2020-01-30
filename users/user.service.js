@@ -1,8 +1,9 @@
 ﻿const config = require('config.js');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const db = require('_helpers/db');
+const db = require('./../_helpers/db');
 const User = db.User;
+const Logs = db.Logs;
 
 module.exports = {
     authenticate,
@@ -10,17 +11,22 @@ module.exports = {
     getById,
     create,
     update,
-    delete: _delete
+    delete: _delete,
+    getLogs: getAuditLogs,
+    logOut
 };
 
-async function authenticate({ username, password }) {
+async function authenticate({ username, password }, client_ip) {
     const user = await User.findOne({ username });
     if (user && bcrypt.compareSync(password, user.hash)) {
         const { hash, ...userWithoutHash } = user.toObject();
-        const token = jwt.sign({ sub: user.id }, config.secret);
+        const log = await Logs.create({ login_time: new Date(), client_ip, user_id: user._id });
+        await User.findOneAndUpdate({ _id: user._id }, { $push: { logs: log._id } })
+        const token = jwt.sign({ sub: user.id, login_id: log._id, role: user.role }, config.secret);
+        userWithoutHash['login_id'] = log._id;
         return {
             ...userWithoutHash,
-            token
+            token,
         };
     }
 }
@@ -72,4 +78,19 @@ async function update(id, userParam) {
 
 async function _delete(id) {
     await User.findByIdAndRemove(id);
+}
+
+async function getAuditLogs({ id, role }) {
+    //get all users except current user
+
+    if (role === 'USER' || !role) return;
+
+    return await User.find({ _id: { $ne: id } }, { hash: 0 }).populate('logs');
+
+}
+
+async function logOut(log_id) {
+
+    return await Logs.findOneAndUpdate({ _id: log_id }, { $set: { logout_time: new Date() } })
+
 }
