@@ -68,7 +68,6 @@ function getLogs(req, res, next) {
 }
 
 function logOut(req, res, next) {
-    let ob = req;
     userService.logOut(req.params.id)
         .then((user) => user ? res.json(user) : res.sendStatus(404))
         .catch(err => next(err));
